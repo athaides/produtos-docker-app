@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Produtos - Docker App</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, Arial, sans-serif; background: #f1f4f9; margin: 0; color: #1f2937; }
+  header { background: #1d4ed8; color: #fff; padding: 18px 24px; }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  header p { margin: 4px 0 0; opacity: .85; font-size: .9rem; }
+  main { max-width: 960px; margin: 24px auto; padding: 0 16px; display: grid; gap: 20px; }
+  .card { background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  form .full { grid-column: 1 / -1; }
+  label { font-size: .85rem; font-weight: 600; display: block; margin-bottom: 4px; }
+  input, textarea { width: 100%; padding: 9px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
+  .acoes { display: flex; gap: 8px; }
+  button { border: 0; border-radius: 6px; padding: 9px 16px; font: inherit; cursor: pointer; }
+  .primario { background: #1d4ed8; color: #fff; }
+  .secundario { background: #e2e8f0; }
+  .perigo { background: #dc2626; color: #fff; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e5e7eb; }
+  th { font-size: .8rem; text-transform: uppercase; color: #64748b; }
+  td button { padding: 5px 10px; font-size: .85rem; }
+  #msg { min-height: 20px; font-size: .9rem; }
+  .erro { color: #dc2626; } .ok { color: #16a34a; }
+  @media (max-width: 600px) { form { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cadastro de Produtos</h1>
+  <p>Front + Back no container "app" · PostgreSQL no container "db"</p>
+</header>
+<main>
+  <section class="card">
+    <h2 id="titulo-form">Novo produto</h2>
+    <form id="form">
+      <input type="hidden" id="id">
+      <div class="full"><label for="nome">Nome</label><input id="nome" required maxlength="120"></div>
+      <div class="full"><label for="descricao">Descrição</label><textarea id="descricao" rows="2" maxlength="500"></textarea></div>
+      <div><label for="preco">Preço (R$)</label><input id="preco" type="number" step="0.01" min="0" required></div>
+      <div><label for="quantidade">Quantidade</label><input id="quantidade" type="number" min="0" step="1" required></div>
+      <div class="full acoes">
+        <button type="submit" class="primario">Salvar</button>
+        <button type="button" class="secundario" id="cancelar">Cancelar</button>
+      </div>
+      <div class="full" id="msg"></div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Produtos cadastrados</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Nome</th><th>Preço</th><th>Qtd</th><th></th></tr></thead>
+      <tbody id="lista"><tr><td colspan="5">Carregando...</td></tr></tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+const API = '/api/produtos';
+const $ = id => document.getElementById(id);
+const moeda = v => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+function mensagem(texto, tipo) { $('msg').textContent = texto; $('msg').className = tipo || ''; }
+
+function escapar(t) {
+  const d = document.createElement('div'); d.textContent = t ?? ''; return d.innerHTML;
+}
+
+async function carregar() {
+  try {
+    const r = await fetch(API);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const produtos = await r.json();
+    $('lista').innerHTML = produtos.length ? produtos.map(p => `
+      <tr>
+        <td>${p.id}</td>
+        <td><strong>${escapar(p.nome)}</strong><br><small>${escapar(p.descricao)}</small></td>
+        <td>${moeda(p.preco)}</td>
+        <td>${p.quantidade}</td>
+        <td class="acoes">
+          <button class="secundario" onclick="editar(${p.id})">Editar</button>
+          <button class="perigo" onclick="excluir(${p.id})">Excluir</button>
+        </td>
+      </tr>`).join('') : '<tr><td colspan="5">Nenhum produto cadastrado.</td></tr>';
+  } catch (e) {
+    $('lista').innerHTML = '<tr><td colspan="5" class="erro">Erro ao conectar na API/banco.</td></tr>';
+  }
+}
+
+function limpar() {
+  $('form').reset(); $('id').value = '';
+  $('titulo-form').textContent = 'Novo produto';
+}
+
+async function editar(id) {
+  const r = await fetch(`${API}/${id}`);
+  if (!r.ok) return mensagem('Produto não encontrado.', 'erro');
+  const p = await r.json();
+  $('id').value = p.id; $('nome').value = p.nome; $('descricao').value = p.descricao || '';
+  $('preco').value = p.preco; $('quantidade').value = p.quantidade;
+  $('titulo-form').textContent = 'Editando produto #' + p.id;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function excluir(id) {
+  if (!confirm('Excluir este produto?')) return;
+  const r = await fetch(`${API}/${id}`, { method: 'DELETE' });
+  mensagem(r.ok ? 'Produto excluído.' : 'Erro ao excluir.', r.ok ? 'ok' : 'erro');
+  carregar();
+}
+
+$('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const id = $('id').value;
+  const corpo = {
+    nome: $('nome').value.trim(),
+    descricao: $('descricao').value.trim(),
+    preco: parseFloat($('preco').value),
+    quantidade: parseInt($('quantidade').value, 10)
+  };
+  const r = await fetch(id ? `${API}/${id}` : API, {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpo)
+  });
+  if (r.ok) { mensagem(id ? 'Produto atualizado!' : 'Produto cadastrado!', 'ok'); limpar(); carregar(); }
+  else mensagem('Erro ao salvar. Confira os campos.', 'erro');
+});
+
+$('cancelar').addEventListener('click', () => { limpar(); mensagem(''); });
+carregar();
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+services:
+  # Container 1: front-end + back-end juntos (Spring Boot serve a pagina e a API)
+  app:
+    build: .
+    container_name: produtos-app
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - produtos-net
+
+  # Container 2: banco de dados separado
+  db:
+    image: postgres:16-alpine
+    container_name: produtos-db
+    ports:
+      - "5440:5432"
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - dados-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - produtos-net
+
+volumes:
+  dados-postgres:
+
+networks:
+  produtos-net:
